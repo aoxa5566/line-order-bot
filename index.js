@@ -59,6 +59,11 @@ function generateOrderSummary(selectedProducts, allProducts) {
   };
 }
 
+// 根路由處理
+app.get("/", (req, res) => {
+  res.send("LINE訂貨機器人伺服器已啟動！");
+});
+
 // Webhook 處理
 app.post("/webhook", express.json(), async (req, res) => {
   try {
