@@ -5,9 +5,8 @@ const redis = require("redis");
 
 const app = express();
 const client = new Client({
-  channelAccessToken:
-    "JdN/iM6Y21zVqq8cRRwzKIKxsI7lSvOy+9ICm6BYPLH44eVvwqvH8jD7sme95G6+PVs8EshHzm+G3ZtZAcFKu3/uIQpRbHzR5OUuDld6w2fbywQ+hxjoXR+5mzzKjX8NLfNcl/tWs1RRtnG5DC0ldAdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "89722b4ccd2a4c523ba6438aec517157",
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, // 使用環境變數
+  channelSecret: process.env.LINE_CHANNEL_SECRET, // 使用環境變數
 });
 
 // 連接到 Redis
@@ -24,7 +23,7 @@ async function getProducts() {
 
   const response = await sheets.spreadsheets.values.get({
     auth,
-    spreadsheetId: "1N9OrHFcqBJraCNIZy5SypP0At1SWKwxhdwScOBc7_S8", // 只填試算表ID
+    spreadsheetId: process.env.GOOGLE_SHEET_ID, // 使用環境變數
     range: "Sheet1!A:B", // 只讀取品名和說明
   });
 
