@@ -24,8 +24,7 @@ async function getProducts() {
 
   const response = await sheets.spreadsheets.values.get({
     auth,
-    spreadsheetId:
-      "https://docs.google.com/spreadsheets/d/1N9OrHFcqBJraCNIZy5SypP0At1SWKwxhdwScOBc7_S8/edit?hl=zh-tw&gid=0#gid=0",
+    spreadsheetId: "1N9OrHFcqBJraCNIZy5SypP0At1SWKwxhdwScOBc7_S8", // 只填試算表ID
     range: "Sheet1!A:B", // 只讀取品名和說明
   });
 
@@ -62,74 +61,91 @@ function generateOrderSummary(selectedProducts, allProducts) {
 
 // Webhook 處理
 app.post("/webhook", express.json(), async (req, res) => {
-  const events = req.body.events;
-  for (const event of events) {
-    if (event.type === "message" && event.message.type === "text") {
-      const userMessage = event.message.text;
-      const userId = event.source.userId;
+  try {
+    const events = req.body.events;
+    for (const event of events) {
+      if (event.type === "message" && event.message.type === "text") {
+        const userMessage = event.message.text;
+        const userId = event.source.userId;
 
-      // 當用戶輸入 '訂貨' 時，顯示產品選擇按鈕
-      if (userMessage === "訂貨") {
-        const products = await getProducts();
-        client.pushMessage(userId, {
-          type: "template",
-          altText: "選擇水果",
-          template: {
-            type: "buttons",
-            title: "選擇水果",
-            text: "請選擇您要的水果",
-            actions: productButtons(products),
-          },
-        });
-      }
-      // 用戶選擇產品後，提示用戶輸入數量
-      else if (userMessage.startsWith("選擇")) {
-        const product = userMessage.replace("選擇", "").trim();
-        client.pushMessage(userId, {
-          type: "text",
-          text: `請輸入您選擇的${product}的數量。`,
-        });
-        // 存儲選擇的產品
-        clientRedis.setex(
-          userId,
-          1800,
-          JSON.stringify({ product, quantity: 0 })
-        ); // 設定30分鐘過期
-      }
-      // 用戶輸入數量
-      else if (userMessage.match(/^\d+$/)) {
-        const order = JSON.parse(await clientRedis.get(userId));
-        order.quantity = parseInt(userMessage);
-        clientRedis.setex(userId, 1800, JSON.stringify(order));
+        // 當用戶輸入 '訂貨' 時，顯示產品選擇按鈕
+        if (userMessage === "訂貨") {
+          const products = await getProducts();
+          client.pushMessage(userId, {
+            type: "template",
+            altText: "選擇產品",
+            template: {
+              type: "buttons",
+              title: "選擇產品",
+              text: "請選擇您要的產品",
+              actions: productButtons(products),
+            },
+          });
+        }
+        // 用戶選擇產品後，提示用戶輸入數量
+        else if (userMessage.startsWith("選擇")) {
+          const product = userMessage.replace("選擇", "").trim();
+          client.pushMessage(userId, {
+            type: "text",
+            text: `請輸入您選擇的${product}的數量。`,
+          });
+          // 存儲選擇的產品
+          clientRedis.setex(
+            userId,
+            1800,
+            JSON.stringify({ product, quantity: 0 })
+          ); // 設定30分鐘過期
+        }
+        // 用戶輸入數量
+        else if (userMessage.match(/^\d+$/)) {
+          clientRedis.get(userId, (err, data) => {
+            if (err) {
+              console.error("Redis Error:", err);
+              return;
+            }
+            const order = data ? JSON.parse(data) : {};
+            order.quantity = parseInt(userMessage);
+            clientRedis.setex(userId, 1800, JSON.stringify(order));
 
-        client.pushMessage(userId, {
-          type: "text",
-          text: `您選擇的${order.product}數量是：${order.quantity}`,
-        });
-      }
-      // 顯示訂單總結
-      else if (userMessage === "總結訂單") {
-        const allProducts = await getProducts();
-        const order = JSON.parse(await clientRedis.get(userId));
+            client.pushMessage(userId, {
+              type: "text",
+              text: `您選擇的${order.product}數量是：${order.quantity}`,
+            });
+          });
+        }
+        // 顯示訂單總結
+        else if (userMessage === "總結訂單") {
+          const allProducts = await getProducts();
+          clientRedis.get(userId, (err, data) => {
+            if (err) {
+              console.error("Redis Error:", err);
+              return;
+            }
+            const order = data ? JSON.parse(data) : {};
 
-        const { selected, notSelected } = generateOrderSummary(
-          [order.product],
-          allProducts
-        );
+            const { selected, notSelected } = generateOrderSummary(
+              [order.product],
+              allProducts
+            );
 
-        client.pushMessage(userId, {
-          type: "text",
-          text: `已選擇的產品：\n${selected}`,
-        });
+            client.pushMessage(userId, {
+              type: "text",
+              text: `已選擇的產品：\n${selected}`,
+            });
 
-        client.pushMessage(userId, {
-          type: "text",
-          text: `未選擇的商品：\n${notSelected}`,
-        });
+            client.pushMessage(userId, {
+              type: "text",
+              text: `未選擇的商品：\n${notSelected}`,
+            });
+          });
+        }
       }
     }
+    res.status(200).send("OK");
+  } catch (error) {
+    console.error("Webhook Error:", error);
+    res.status(500).send("Internal Server Error");
   }
-  res.status(200).send("OK");
 });
 
 // 啟動伺服器
