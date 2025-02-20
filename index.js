@@ -2,32 +2,49 @@ const express = require("express");
 const { Client } = require("@line/bot-sdk");
 const { google } = require("googleapis");
 const redis = require("redis");
+const dotenv = require("dotenv");
+
+dotenv.config(); // 讀取環境變數
 
 const app = express();
+
+// 初始化LINE Bot SDK 客戶端
 const client = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, // 使用環境變數
   channelSecret: process.env.LINE_CHANNEL_SECRET, // 使用環境變數
 });
 
 // 連接到 Redis
-const clientRedis = redis.createClient();
+const clientRedis = redis.createClient({
+  host: process.env.REDIS_HOST, // Redis 主機
+  port: process.env.REDIS_PORT, // Redis 端口
+});
+
+clientRedis.on("error", (err) => {
+  console.log("Redis connection error: ", err);
+});
 
 // 設置 Google Sheets API
 const sheets = google.sheets("v4");
 
 // 讀取 Google 試算表中的產品資料
 async function getProducts() {
-  const auth = await google.auth.getClient({
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-  });
+  try {
+    const auth = await google.auth.getClient({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
 
-  const response = await sheets.spreadsheets.values.get({
-    auth,
-    spreadsheetId: process.env.GOOGLE_SHEET_ID, // 使用環境變數
-    range: "Sheet1!A:B", // 只讀取品名和說明
-  });
+    const response = await sheets.spreadsheets.values.get({
+      auth,
+      spreadsheetId: process.env.GOOGLE_SHEET_ID, // 使用環境變數
+      range: "Sheet1!A:B", // 只讀取品名和說明
+    });
 
-  return response.data.values;
+    return response.data.values || [];
+  } catch (error) {
+    console.error("Error fetching products from Google Sheets:", error);
+    return [];
+  }
 }
 
 // 生成產品選擇按鈕
