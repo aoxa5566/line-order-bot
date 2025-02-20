@@ -8,21 +8,18 @@ dotenv.config(); // 讀取環境變數
 
 const app = express();
 
-// 初始化LINE Bot SDK 客戶端
+// 初始化 LINE Bot SDK 客戶端
 const client = new Client({
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, // 使用環境變數
-  channelSecret: process.env.LINE_CHANNEL_SECRET, // 使用環境變數
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
 });
 
 // 連接到 Redis
 const clientRedis = redis.createClient({
-  host: process.env.REDIS_HOST, // Redis 主機
-  port: process.env.REDIS_PORT, // Redis 端口
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
 });
-
-clientRedis.on("error", (err) => {
-  console.log("Redis connection error: ", err);
-});
+clientRedis.on("error", (err) => console.log("Redis connection error:", err));
 
 // 設置 Google Sheets API
 const sheets = google.sheets("v4");
@@ -36,8 +33,8 @@ async function getProducts() {
 
     const response = await sheets.spreadsheets.values.get({
       auth,
-      spreadsheetId: process.env.GOOGLE_SHEET_ID, // 使用環境變數
-      range: "Sheet1!A:B", // 只讀取品名和說明
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: "Sheet1!A:B",
     });
 
     return response.data.values || [];
@@ -69,10 +66,7 @@ function generateOrderSummary(selectedProducts, allProducts) {
     }
   });
 
-  return {
-    selected,
-    notSelected,
-  };
+  return { selected, notSelected };
 }
 
 // 根路由處理
@@ -85,81 +79,76 @@ app.post("/webhook", express.json(), async (req, res) => {
   try {
     const events = req.body.events;
     for (const event of events) {
-      if (event.type === "message" && event.message.type === "text") {
-        const userMessage = event.message.text;
-        const userId = event.source.userId;
+      const userMessage = event.message.text;
+      const userId = event.source.userId;
 
-        // 當用戶輸入 '訂貨' 時，顯示產品選擇按鈕
-        if (userMessage === "訂貨") {
-          const products = await getProducts();
-          client.pushMessage(userId, {
-            type: "template",
-            altText: "選擇產品",
-            template: {
-              type: "buttons",
-              title: "選擇產品",
-              text: "請選擇您要的產品",
-              actions: productButtons(products),
-            },
-          });
-        }
-        // 用戶選擇產品後，提示用戶輸入數量
-        else if (userMessage.startsWith("選擇")) {
-          const product = userMessage.replace("選擇", "").trim();
+      // 當用戶輸入 '訂貨' 時，顯示產品選擇按鈕
+      if (userMessage === "訂貨") {
+        const products = await getProducts();
+        client.pushMessage(userId, {
+          type: "template",
+          altText: "選擇產品",
+          template: {
+            type: "buttons",
+            title: "選擇產品",
+            text: "請選擇您要的產品",
+            actions: productButtons(products),
+          },
+        });
+      }
+      // 用戶選擇產品後，提示用戶輸入數量
+      else if (userMessage.startsWith("選擇")) {
+        const product = userMessage.replace("選擇", "").trim();
+        client.pushMessage(userId, {
+          type: "text",
+          text: `請輸入您選擇的${product}的數量。`,
+        });
+        clientRedis.setex(
+          userId,
+          1800,
+          JSON.stringify({ product, quantity: 0 })
+        ); // 設定30分鐘過期
+      }
+      // 用戶輸入數量
+      else if (userMessage.match(/^\d+$/)) {
+        clientRedis.get(userId, (err, data) => {
+          if (err) {
+            console.error("Redis Error:", err);
+            return;
+          }
+          const order = data ? JSON.parse(data) : {};
+          order.quantity = parseInt(userMessage);
+          clientRedis.setex(userId, 1800, JSON.stringify(order));
+
           client.pushMessage(userId, {
             type: "text",
-            text: `請輸入您選擇的${product}的數量。`,
+            text: `您選擇的${order.product}數量是：${order.quantity}`,
           });
-          // 存儲選擇的產品
-          clientRedis.setex(
-            userId,
-            1800,
-            JSON.stringify({ product, quantity: 0 })
-          ); // 設定30分鐘過期
-        }
-        // 用戶輸入數量
-        else if (userMessage.match(/^\d+$/)) {
-          clientRedis.get(userId, (err, data) => {
-            if (err) {
-              console.error("Redis Error:", err);
-              return;
-            }
-            const order = data ? JSON.parse(data) : {};
-            order.quantity = parseInt(userMessage);
-            clientRedis.setex(userId, 1800, JSON.stringify(order));
+        });
+      }
+      // 顯示訂單總結
+      else if (userMessage === "總結訂單") {
+        const allProducts = await getProducts();
+        clientRedis.get(userId, (err, data) => {
+          if (err) {
+            console.error("Redis Error:", err);
+            return;
+          }
+          const order = data ? JSON.parse(data) : {};
+          const { selected, notSelected } = generateOrderSummary(
+            [order.product],
+            allProducts
+          );
 
-            client.pushMessage(userId, {
-              type: "text",
-              text: `您選擇的${order.product}數量是：${order.quantity}`,
-            });
+          client.pushMessage(userId, {
+            type: "text",
+            text: `已選擇的產品：\n${selected}`,
           });
-        }
-        // 顯示訂單總結
-        else if (userMessage === "總結訂單") {
-          const allProducts = await getProducts();
-          clientRedis.get(userId, (err, data) => {
-            if (err) {
-              console.error("Redis Error:", err);
-              return;
-            }
-            const order = data ? JSON.parse(data) : {};
-
-            const { selected, notSelected } = generateOrderSummary(
-              [order.product],
-              allProducts
-            );
-
-            client.pushMessage(userId, {
-              type: "text",
-              text: `已選擇的產品：\n${selected}`,
-            });
-
-            client.pushMessage(userId, {
-              type: "text",
-              text: `未選擇的商品：\n${notSelected}`,
-            });
+          client.pushMessage(userId, {
+            type: "text",
+            text: `未選擇的商品：\n${notSelected}`,
           });
-        }
+        });
       }
     }
     res.status(200).send("OK");
