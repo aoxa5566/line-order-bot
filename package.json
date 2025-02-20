@@ -1,19 +1,8 @@
 {
-  "name": "finn-code",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@line/bot-sdk": "^9.5.3",
+    "@line/bot-sdk": "^9.7.1",
     "express": "^4.21.2",
-    "fs": "^0.0.1-security",
-    "googleapis": "^144.0.0"
-  },
-  "devDependencies": {},
-  "description": ""
+    "googleapis": "^144.0.0",
+    "redis": "^4.7.0"
+  }
 }
