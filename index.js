@@ -1,7 +1,6 @@
 const express = require("express");
 const { Client } = require("@line/bot-sdk");
 const { google } = require("googleapis");
-const redis = require("redis");
 const dotenv = require("dotenv");
 
 dotenv.config(); // 讀取環境變數
