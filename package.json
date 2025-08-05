@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "@line/bot-sdk": "^9.7.1",
-    "express": "^4.21.2",
-    "googleapis": "^144.0.0",
-    "redis": "^4.7.0"
-  }
-}
